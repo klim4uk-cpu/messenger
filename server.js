@@ -2,10 +2,10 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const { Pool } = require('pg'); // ВМЕСТО sqlite3
+const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session); // ДЛЯ СЕССИЙ
+const pgSession = require('connect-pg-simple')(session);
 
 const app = express();
 const server = http.createServer(app);
@@ -19,29 +19,63 @@ app.use(express.json());
 
 // ===== POSTGRESQL ПОДКЛЮЧЕНИЕ =====
 const pool = new Pool({
-    connectionString: 'postgresql://messenger_user:Lg29ypGpcCGJRMAfUY6COcoHjzvB9vH6@dpg-d6smrrggjchc73buvc30-a/messenger_lgun',
+    connectionString: process.env.DATABASE_URL || 'postgresql://messenger_user:Lg29ypGpcCGJRMAfUY6COcoHjzvB9vH6@dpg-d6smrrggjchc73buvc30-a/messenger_lgun',
     ssl: {
         rejectUnauthorized: false
     }
 });
 
-// Создаем таблицы
-pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        avatar VARCHAR(10) DEFAULT '👤',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_seen TIMESTAMP
-    );
-`);
+// ===== СОЗДАЕМ ТАБЛИЦЫ =====
+async function initDb() {
+    try {
+        // Таблица пользователей
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                avatar VARCHAR(10) DEFAULT '👤',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP
+            );
+        `);
+        console.log('✅ Таблица users создана');
+
+        // Таблица для сессий
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS "session" (
+                "sid" varchar NOT NULL COLLATE "default",
+                "sess" json NOT NULL,
+                "expire" timestamp(6) NOT NULL
+            )
+            WITH (OIDS=FALSE);
+        `);
+        console.log('✅ Таблица session создана');
+
+        // Добавляем первичный ключ если его нет
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'session_pkey') THEN
+                    ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid");
+                END IF;
+            END $$;
+        `);
+        console.log('✅ Первичный ключ для session добавлен');
+
+    } catch (err) {
+        console.error('❌ Ошибка при создании таблиц:', err);
+    }
+}
+
+initDb();
 
 // ===== СЕССИИ С POSTGRESQL =====
 app.use(session({
     store: new pgSession({
         pool: pool,
-        tableName: 'session'
+        tableName: 'session',
+        createTableIfMissing: true
     }),
     secret: 'messenger-secret-key-123',
     resave: false,
@@ -73,11 +107,11 @@ app.post('/api/register', async (req, res) => {
         
         res.json({ success: true });
     } catch (err) {
-        if (err.constraint === 'users_username_key') {
+        console.error('Register error:', err);
+        if (err.constraint === 'users_username_key' || err.code === '23505') {
             res.json({ success: false, error: 'Ник уже занят' });
         } else {
-            console.error(err);
-            res.json({ success: false, error: 'Ошибка базы' });
+            res.json({ success: false, error: 'Ошибка сервера' });
         }
     }
 });
@@ -119,7 +153,7 @@ app.post('/api/login', async (req, res) => {
             }
         });
     } catch (err) {
-        console.error(err);
+        console.error('Login error:', err);
         res.json({ success: false, error: 'Ошибка сервера' });
     }
 });
@@ -139,6 +173,7 @@ app.get('/api/me', async (req, res) => {
                 res.json({ authenticated: false });
             }
         } catch (err) {
+            console.error('Me error:', err);
             res.json({ authenticated: false });
         }
     } else {
@@ -210,7 +245,6 @@ io.on('connection', (socket) => {
             messageData.from = data.user;
             
             const chatKey = [data.user, data.to].sort().join('_');
-            console.log('Ключ чата:', chatKey);
             
             if (!privateMessages[chatKey]) {
                 privateMessages[chatKey] = [];
@@ -221,17 +255,12 @@ io.on('connection', (socket) => {
             const receiverSocket = receiverEntry ? receiverEntry[0] : null;
             
             if (receiverSocket) {
-                console.log('Отправляем получателю:', data.to);
                 io.to(receiverSocket).emit('chat message', messageData);
                 io.to(receiverSocket).emit('new private chat', { with: data.user });
-            } else {
-                console.log('Получатель не в сети:', data.to);
             }
             
             socket.emit('chat message', messageData);
-            console.log('Отправлено отправителю');
         } else {
-            console.log('Общее сообщение');
             publicMessages.push(messageData);
             if (publicMessages.length > 500) {
                 publicMessages = publicMessages.slice(-500);
@@ -382,7 +411,7 @@ io.on('connection', (socket) => {
             pool.query(
                 'UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE username = $1',
                 [username]
-            );
+            ).catch(err => console.error('Update last_seen error:', err));
         }
     });
 });
