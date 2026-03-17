@@ -2,51 +2,147 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Telegram-style Messenger</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MEsSENDger</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <!-- Сайдбар как в Telegram -->
+    <!-- АВТОРИЗАЦИЯ -->
+    <div class="auth-container" id="auth-container">
+        <div class="auth-box">
+            <h2>MEsSENDger</h2>
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="login-tab">Вход</button>
+                <button class="auth-tab" id="register-tab">Регистрация</button>
+            </div>
+            
+            <div class="auth-form active" id="login-form">
+                <input type="text" id="login-username" placeholder="Никнейм">
+                <input type="password" id="login-password" placeholder="Пароль">
+                <button id="login-btn">Войти</button>
+                <div class="auth-error" id="login-error"></div>
+            </div>
+            
+            <div class="auth-form" id="register-form">
+                <input type="text" id="register-username" placeholder="Никнейм (3-20 символов)">
+                <input type="password" id="register-password" placeholder="Пароль (мин. 6 символов)">
+                <button id="register-btn">Зарегистрироваться</button>
+                <div class="auth-error" id="register-error"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ОСНОВНОЙ ЧАТ (СКРЫТ ПОКА НЕ ВОЙДЕШЬ) -->
+    <div class="container" id="chat-container" style="display: none;">
         <div class="sidebar">
             <div class="profile-header">
                 <div class="user-info">
                     <div class="avatar" id="user-avatar">👤</div>
                     <div class="user-details">
-                        <input type="text" id="username-input" placeholder="Введите ваше имя" maxlength="30">
-                        <button id="set-username">Продолжить</button>
+                        <span id="current-username"></span>
+                        <button id="logout-btn" class="logout-btn">Выйти</button>
                     </div>
                 </div>
             </div>
             
-            <div class="contacts-section">
-                <div class="contacts-header">
-                    Контакты · <span id="online-count">0</span> онлайн
+            <div class="tabs">
+                <button class="tab active" id="tab-chats">Чаты</button>
+                <button class="tab" id="tab-contacts">Контакты</button>
+            </div>
+            
+            <div class="chats-list" id="chats-list">
+                <div class="chat-item active" data-chat="public">
+                    <div class="chat-avatar">💬</div>
+                    <div class="chat-info">
+                        <div class="chat-name">Общий чат</div>
+                        <div class="chat-last-msg"></div>
+                    </div>
                 </div>
+            </div>
+            
+            <div class="contacts-section" id="contacts-section" style="display: none;">
+                <div class="contacts-header">Пользователи · <span id="online-count">0</span></div>
                 <ul id="users-list"></ul>
             </div>
         </div>
         
-        <!-- Основной чат -->
         <div class="chat">
             <div class="chat-header">
-                <div class="avatar" id="chat-avatar">💬</div>
-                <h2>Общий чат</h2>
-                <div class="chat-header-status" id="chat-status"></div>
+                <div class="avatar">💬</div>
+                <div class="chat-info">
+                    <h2>Общий чат</h2>
+                    <span class="chat-subtitle" id="chat-status"></span>
+                </div>
             </div>
             
             <div class="messages" id="messages"></div>
-            
             <div class="typing-status" id="typing-status"></div>
             
             <div class="message-input">
-                <textarea id="message-text" placeholder="Написать сообщение..." rows="1"></textarea>
-                <button id="send-message">➤</button>
+                <button class="emoji-button" id="emoji-button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <circle cx="8" cy="9" r="1.5" fill="currentColor"/>
+                        <circle cx="16" cy="9" r="1.5" fill="currentColor"/>
+                        <path d="M8 14C8 14 9.5 16 12 16C14.5 16 16 14 16 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                    </svg>
+                </button>
+
+                <button class="attach-button" id="attach-button">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M16.5 6.5L9 14L6.5 11.5L3 15L3 19L7 19L18 8L16.5 6.5Z" fill="currentColor"/>
+                        <circle cx="17" cy="7" r="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <path d="M20 11L20 19L4 19L4 11" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                    </svg>
+                </button>
+
+                <input type="file" id="file-input" accept="image/*,video/*" style="display: none;">
+
+                <div class="picker-container" id="picker-container" style="display: none;">
+                    <div class="picker-tabs">
+                        <button class="picker-tab active" data-tab="emoji">😊</button>
+                        <button class="picker-tab" data-tab="stickers">🎨</button>
+                        <button class="picker-tab" data-tab="gif">GIF</button>
+                    </div>
+                    <div class="picker-content" id="picker-content"></div>
+                </div>
+
+                <textarea id="message-text" placeholder="Сообщение..." rows="1"></textarea>
+                <button id="send-message">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </div>
-    
+
+    <div class="preview-container" id="preview-container" style="display: none;">
+        <div class="preview-content">
+            <div class="preview-header">
+                <span>Предпросмотр</span>
+                <button class="preview-close" id="preview-close">✕</button>
+            </div>
+            <div class="preview-media" id="preview-media"></div>
+            <div class="preview-info" id="preview-info"></div>
+            <div class="preview-buttons">
+                <button class="preview-send" id="preview-send">Отправить</button>
+                <button class="preview-cancel" id="preview-cancel">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+<!-- Модалка для подтверждения ЛС -->
+<div class="modal" id="private-modal" style="display: none;">
+    <div class="modal-content">
+        <h3>Начать личный чат с <span id="modal-username"></span>?</h3>
+        <div class="modal-buttons">
+            <button id="modal-yes">Да</button>
+            <button id="modal-no">Нет</button>
+        </div>
+    </div>
+</div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>
 </body>
